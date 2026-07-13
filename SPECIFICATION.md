@@ -1,253 +1,245 @@
 # Lightweight Ledger Attestation Protocol (LLAP)
 
-**Version:** Draft 0.1
+**Version:** 0.1 (Draft)
 
 **Status:** Research Proposal
 
-**Author:** Bambang Irawan
+**License:** Apache 2.0
+
+---
+
+# Abstract
+
+The Lightweight Ledger Attestation Protocol (LLAP) is an application-layer protocol for cryptographically attesting offline-generated transaction history before synchronization.
+
+Unlike transport security protocols such as TLS, which protect data during transmission, LLAP enables a trusted verifier to validate the integrity and continuity of historical ledger state generated while a device operated offline.
+
+LLAP composes existing cryptographic primitives—including Merkle trees, historical hash chaining, canonical serialization, digital signatures, append-only archives, idempotency keys, and signed receipts—into a deterministic synchronization workflow.
+
+The protocol complements rather than replaces transport security or distributed consensus.
 
 ---
 
 # 1. Introduction
 
-The Lightweight Ledger Attestation Protocol (LLAP) is a protocol proposal for cryptographically attesting the integrity of offline-generated transaction history before synchronization.
+Offline-first systems increasingly operate in environments with intermittent connectivity.
 
-Unlike traditional synchronization protocols that primarily rely on transport security (e.g., TLS), LLAP focuses on generating verifiable evidence that transaction history has not been rewritten during offline operation.
-
-LLAP does **not** replace TLS or distributed consensus protocols. Instead, it complements them by introducing an application-layer attestation mechanism.
-
----
-
-# 2. Motivation
-
-Offline-first systems are increasingly common in:
+Examples include:
 
 - Retail Point-of-Sale
-- Manufacturing
 - Industrial IoT
+- Manufacturing
 - Logistics
-- Mining
-- Maritime Operations
+- Maritime Systems
 - Edge Computing
-- Remote Field Systems
 
-These environments continue operating while disconnected from central infrastructure.
+These systems continue processing transactions while disconnected from central infrastructure.
 
-Although TLS protects data during transmission, it provides no guarantee that locally stored history remained intact before synchronization.
+When connectivity returns, synchronization typically relies on HTTPS and digital signatures.
+
+Although these mechanisms secure communication, they cannot prove that locally stored transaction history remained unmodified before synchronization.
 
 LLAP addresses this gap.
 
 ---
 
-# 3. Design Goals
+# 2. Design Goals
 
-LLAP is designed to provide:
+LLAP aims to provide:
 
 - Historical Integrity
 - Tamper Detection
-- Cryptographic Attestation
 - Replay Protection
+- Cryptographic Receipts
 - Deterministic Synchronization
-- Signed Acknowledgements
-
-LLAP intentionally avoids introducing new cryptographic primitives.
+- Application-layer Attestation
 
 ---
 
-# 4. Non-Goals
+# 3. Non-Goals
 
-LLAP does **not** attempt to solve:
+LLAP intentionally does not attempt to solve:
 
-- Endpoint malware
-- Private key theft
-- Physical device destruction
-- Consensus between multiple independent authorities
-- Byzantine Fault Tolerance
+- Endpoint compromise
+- Malware detection
+- Physical device attacks
+- Distributed consensus
+- Confidentiality without TLS
 
 These concerns require complementary security mechanisms.
 
 ---
 
-# 5. Threat Model
+# 4. Terminology
 
-LLAP assumes that attackers may:
-
-- Modify local databases
-- Replay synchronization requests
-- Restore outdated backups
-- Delete transaction history
-- Manipulate transaction ordering
-
-LLAP assumes:
-
-- Device private keys remain secure.
-- Trust Anchor is trusted.
-- Cryptographic algorithms remain secure.
+| Term | Description |
+|------|-------------|
+| Edge Device | Offline system producing transactions |
+| Ledger | Ordered collection of transactions |
+| Ledger Evidence | Cryptographic evidence generated from the ledger |
+| Trust Anchor | Central verifier |
+| Receipt | Signed acknowledgment from Trust Anchor |
+| Epoch | Independent historical segment |
+| Idempotency Key | Unique synchronization identifier |
 
 ---
 
-# 6. Architecture
+# 5. Cryptographic Components
+
+LLAP uses existing cryptographic primitives.
+
+## 5.1 Canonical Serialization
+
+CBOR (RFC 8949)
+
+Purpose:
+
+- Deterministic encoding
+- Platform independence
+
+---
+
+## 5.2 Historical Hash Chain
+
+Each ledger entry references the previous hash.
 
 ```
-Edge Device
-     │
-Generate Ledger Evidence
-     │
-Synchronize
-     │
-Trust Anchor
-     │
-Signed Receipt
-     │
-ATTESTED
+H0 = SHA256(genesis)
+
+H1 = SHA256(H0 || Tx1)
+
+H2 = SHA256(H1 || Tx2)
+
+H3 = SHA256(H2 || Tx3)
 ```
 
 ---
 
-# 7. Protocol Overview
+## 5.3 Merkle Tree
 
-Each synchronization consists of six phases.
+Transactions within one synchronization batch are organized into a Merkle Tree.
+
+Purpose:
+
+- Efficient verification
+- Partial proofs
+- Batch integrity
+
+---
+
+## 5.4 Digital Signatures
+
+Supported algorithms:
+
+- Ed25519
+- ECDSA P-256
+
+Purpose:
+
+- Authentication
+- Non-repudiation
+
+---
+
+## 5.5 Signed Receipt
+
+The Trust Anchor returns a digitally signed receipt containing:
+
+- Ledger Root
+- Epoch
+- Timestamp
+- Receipt ID
+- Signature
+
+---
+
+# 6. Protocol Workflow
+
+LLAP consists of six deterministic phases.
 
 ## Phase 1
 
-Generate deterministic ledger evidence.
+Generate Ledger Evidence
 
-Includes:
+Inputs:
 
-- Canonical serialization
-- Merkle tree
-- Historical hash chain
+- Transactions
+
+Outputs:
+
+- Ledger Root
+- Historical Hash
+- Metadata
 
 ---
 
 ## Phase 2
 
-Digitally sign ledger evidence.
+Sign Evidence
 
-Recommended algorithms:
-
-- Ed25519
-- ECDSA P-256
+The device signs generated evidence using its private key.
 
 ---
 
 ## Phase 3
 
-Synchronize evidence over an untrusted network.
+Synchronize
 
-Recommended transport:
+The client transmits:
 
-- HTTPS
-- TLS 1.3
+- Ledger Evidence
+- Metadata
+- Signature
+- Idempotency Key
+
+Transport SHOULD use TLS.
 
 ---
 
 ## Phase 4
 
-Trust Anchor verifies:
+Verification
+
+The Trust Anchor verifies:
 
 - Signature
+- Hash Chain
 - Merkle Root
-- Historical Hash Chain
-- Previous Receipt
+- Epoch Continuity
+- Replay Status
 
 ---
 
 ## Phase 5
 
-Trust Anchor stores evidence inside an append-only archive.
+Receipt Generation
+
+Upon successful verification the Trust Anchor generates a signed receipt.
 
 ---
 
 ## Phase 6
 
-Trust Anchor returns a signed cryptographic receipt.
+Attestation
 
-Client verifies receipt.
+The client verifies the receipt.
 
-Client state changes:
+If verification succeeds:
 
 ```
-SYNCED
-↓
-
-ATTESTED
+State = ATTESTED
 ```
 
 ---
 
-# 8. Protocol Components
-
-## Ledger
-
-Append-only transaction history.
-
----
-
-## Ledger Evidence
-
-Evidence generated from:
-
-- Canonical CBOR serialization
-- Merkle Root
-- Historical Hash Chain
-
----
-
-## Trust Anchor
-
-Central authority responsible for:
-
-- Validation
-- Archiving
-- Receipt issuance
-
----
-
-## Signed Receipt
-
-Contains:
-
-- Ledger ID
-- Merkle Root
-- Previous Hash
-- Timestamp
-- Signature
-
----
-
-# 9. Security Properties
-
-LLAP provides:
-
-✓ Integrity
-
-✓ Authenticity
-
-✓ Non-repudiation
-
-✓ Replay Protection
-
-✓ Historical Continuity
-
-LLAP does not provide:
-
-✗ Endpoint Security
-
-✗ Confidentiality without TLS
-
-✗ Consensus
-
----
-
-# 10. State Machine
+# 7. State Machine
 
 ```
-NEW
+OFFLINE
 
 ↓
 
-GENERATED
+EVIDENCE_GENERATED
 
 ↓
 
@@ -255,11 +247,15 @@ SIGNED
 
 ↓
 
-SYNCHRONIZED
+SYNCHRONIZING
 
 ↓
 
-RECEIPT VERIFIED
+VERIFIED
+
+↓
+
+RECEIPT_RECEIVED
 
 ↓
 
@@ -268,79 +264,195 @@ ATTESTED
 
 ---
 
-# 11. Recommended Cryptography
+# 8. Message Flow
 
-Canonical Encoding
+```
+Edge Device                 Trust Anchor
 
-- CBOR (RFC 8949)
+Generate Ledger
 
-Hash Function
+Sign Evidence
 
-- SHA-256
-- SHA-512/256
+──────── Evidence ────────►
 
-Digital Signature
+Verify
 
-- Ed25519
-- ECDSA P-256
+Store Archive
 
-Merkle Tree
+Generate Receipt
 
-- Binary Merkle Tree
+◄──── Signed Receipt ──────
+
+Verify Receipt
+
+ATTESTED
+```
 
 ---
 
-# 12. Design Principles
+# 9. Idempotent Recovery
 
-LLAP follows several principles.
+If synchronization fails:
 
-1. Deterministic
+Client sends:
 
-Evidence generation must produce identical outputs for identical ledgers.
+```
+ReceiptRequest
 
-2. Append-only
+IdempotencyKey
+```
 
-Historical evidence must never be modified.
+Trust Anchor responds:
 
-3. Idempotent
+```
+Receipt Exists
 
-Synchronization must safely tolerate retries.
+or
 
-4. Verifiable
+Receipt Missing
+```
 
-Every synchronization produces independently verifiable evidence.
+This avoids duplicate synchronization.
+
+---
+
+# 10. Security Properties
+
+LLAP provides:
+
+✔ Historical Integrity
+
+✔ Replay Protection
+
+✔ Cryptographic Receipts
+
+✔ Tamper Detection
+
+✔ Verifiable Synchronization
+
+LLAP assumes:
+
+- Private keys remain secure.
+- Trust Anchor is trusted.
+
+---
+
+# 11. Threat Model
+
+Out of scope:
+
+- Private key theft
+- Hardware compromise
+- Memory attacks
+- Physical attacks
+- Supply-chain compromise
+
+Future versions may incorporate hardware-backed key protection.
+
+---
+
+# 12. Performance Considerations
+
+The protocol introduces:
+
+- Hash computation
+- Merkle construction
+- Signature generation
+- Signature verification
+
+These costs are expected to remain practical for edge devices.
+
+Formal benchmarking is planned.
 
 ---
 
 # 13. Future Work
 
-Future research includes:
+Planned work includes:
 
 - Formal verification
-- Tamarin proofs
-- ProVerif models
-- Transparency logs
+- Threat modeling
 - TPM integration
 - Secure Enclave integration
 - HSM integration
-- Benchmarking
-- Reference implementation
+- Transparency logs
+- Test vectors
+- SDK implementations
 
 ---
 
-# 14. Status
+# 14. IANA Considerations
 
-LLAP is currently a research proposal.
-
-The protocol is undergoing community review and is expected to evolve based on implementation experience and peer feedback.
+This document requires no IANA actions.
 
 ---
 
-# References
+# 15. References
+
+Normative References
 
 - RFC 8949 — CBOR
-- RFC 8032 — EdDSA
-- RFC 6962 / RFC 9162 — Certificate Transparency
+- RFC 8032 — Ed25519
+
+Informative References
+
+- RFC 9162 — Certificate Transparency
 - NIST FIPS 180-4
-- Google Android Offline-First Architecture
-- Microsoft Azure IoT Edge Documentation
+- Google Android Offline-first Architecture
+- Microsoft Azure IoT Edge
+
+---
+
+# Appendix A
+
+Example Hash Chain
+
+```
+Genesis
+
+↓
+
+Tx1
+
+↓
+
+Tx2
+
+↓
+
+Tx3
+
+↓
+
+Tx4
+```
+
+---
+
+# Appendix B
+
+Example Receipt
+
+```
+Receipt ID
+
+Ledger Root
+
+Epoch
+
+Timestamp
+
+Device ID
+
+Signature
+```
+
+---
+
+# Appendix C
+
+Version History
+
+| Version | Status |
+|----------|--------|
+| 0.1 | Initial Draft |
