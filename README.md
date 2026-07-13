@@ -36,6 +36,10 @@ In short:
 - TLS secures communication.
 - LLAP attests history.
 
+<p align="center">
+  <img src="diagrams/tls-vs-llap.png" width="850" alt="TLS vs LLAP">
+</p>
+
 ---
 
 # Overview
